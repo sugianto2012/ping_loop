@@ -1,0 +1,206 @@
+#!/bin/sh
+case $1 in
+"install")
+cp -f ping_loop /usr/bin/
+sleep 1
+chmod 755 /usr/bin/ping_loop
+
+cat > /etc/config/ping_loop << END
+config global 'setting'
+       option host 'google.com'
+       option count '2'
+       option interval '2'
+       option timeout '10'
+       option bytecount '8'
+       option ip_rx1 '192.168.1.1'
+       option ip_rx2 '192.168.1.1'
+
+END
+cat > /root/ipc.txt << END
+192.168.1.1
+    
+END
+cat > /etc/init.d/ping_loop << END
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2013 OpenWrt.org
+
+START=20
+USE_PROCD=1
+
+start_service()
+{
+	ping_loop &
+}
+stop_service()
+{
+    ps |grep ping_loop|grep -v grep > /dev/null
+    if [ "\$?" == "0" ];then
+        pid=\$(ps |grep ping_loop|grep -v grep|awk -F" " '{print \$1}')
+        kill \$pid
+    fi
+}
+
+END
+cat > /www/cgi-bin/pingloop << END
+#!/bin/sh
+
+    echo "Content-type: text/html"
+    echo ""
+    echo "
+<html>
+<style type=\"text/css\">
+ body {
+  font-family: Verdana, Arial, Helvetica, sans-serif;
+ }
+ #centered {
+  width: 550px;
+  margin: auto;
+  text-align: center;
+ }
+ .label {
+  text-align: left;
+ }
+ .text {
+  width: 100%;
+ }
+ pre {
+  text-align: left;
+ }
+</style>
+<head>
+ <title>Ping Loop</title>
+ <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />
+</head>
+<body>
+"
+HOST=\$(uci get ping_loop.setting.host)
+INTERVAL=\$(uci get ping_loop.setting.interval)
+COUNT=\$(uci get ping_loop.setting.count)
+TIMEOUT=\$(uci get ping_loop.setting.timeout)
+BYTECOUNT=\$(uci get ping_loop.setting.bytecount)
+IP_RX1=\$(uci get ping_loop.setting.ip_rx1)
+IP_RX2=\$(uci get ping_loop.setting.ip_rx2)
+
+get_post(){
+     for qr in \$QUERY_STRING
+     do          
+          if [ "\${qr%%=*}" == "\$1" ];then              
+              echo \${qr##*=}| sed 's/+/ /g' 
+              break
+          fi 
+     done  
+}
+    if [ "\$REQUEST_METHOD" = POST ]; then
+            read -t 3 QUERY_STRING
+            QUERY_STRING=\$(echo \$QUERY_STRING | sed 's/&/ /g') 
+            QUERY_STRING=\$(echo \$QUERY_STRING | sed 's/%3A/:/g')             
+            if [ "\$(get_post start)" == "Start Ping_loop" ];then
+                  killall ping_loop
+                  /etc/init.d/ping_loop start
+                  /etc/init.d/ping_loop enable
+                  date > /tmp/ping_loop
+                  echo "ping_loop started by user.." >> /tmp/ping_loop  
+            fi
+            if [ "\$(get_post stop)" == "Stop Ping_loop" ];then
+                  killall ping_loop
+                  date > /tmp/ping_loop
+                  /etc/init.d/ping_loop disable
+                  echo "ping_loop stoped by user.." >> /tmp/ping_loop
+            fi
+            if [ "\$(get_post update)" == "Update Config" ];then
+                  HOST=\$(get_post host)
+                  INTERVAL=\$(get_post interval)
+                  COUNT=\$(get_post count)
+                  TIMEOUT=\$(get_post timeout)
+                  BYTECOUNT=\$(get_post bytecount)
+                  IP_RX1=\$(get_post ip_rx1)
+                  IP_RX2=\$(get_post ip_rx2)
+                  uci set ping_loop.setting.host=\$HOST
+                  uci set ping_loop.setting.interval=\$INTERVAL
+                  uci set ping_loop.setting.count=\$COUNT
+                  uci set ping_loop.setting.timeout=\$TIMEOUT
+                  uci set ping_loop.setting.bytecount=\$BYTECOUNT
+                  uci set ping_loop.setting.ip_rx1=\$IP_RX1
+                  uci set ping_loop.setting.ip_rx2=\$IP_RX2
+                  uci commit ping_loop
+                  killall ping_loop
+                  ping_loop &         
+                  date > /tmp/ping_loop
+                  echo "config update by user.." >> /tmp/ping_loop  
+            fi
+    fi
+    echo "<div id=centered>
+    <h3>Ping Loop versi 3</h3>
+    <form method=\"post\">       
+        <div class=label>Host Ping :</div><input name=\"host\" class=text value=\"\$HOST\"><br>
+        <div class=label>Count :</div><input name=\"count\" class=text value=\"\$COUNT\"><br>
+        <div class=label>Interval :</div><input name=\"interval\" class=text value=\"\$INTERVAL\"><br>
+        <div class=label>Timeout :</div><input name=\"timeout\" class=text value=\"\$TIMEOUT\"><br>
+        <div class=label>Byte Count :</div><input name=\"bytecount\" class=text value=\"\$BYTECOUNT\"><br>
+        <div class=label>IPaddr RX1 :</div><input name=\"ip_rx1\" class=text value=\"\$IP_RX1\"><br>
+        <div class=label>IPaddr RX2 :</div><input name=\"ip_rx2\" class=text value=\"\$IP_RX2\"><br><br>
+        <input type=\"submit\" name=\"update\" value=\"Update Config\">
+        <input type=\"submit\" name=\"start\" value=\"Start Ping_loop\">
+        <input type=\"submit\" name=\"stop\" value=\"Stop Ping_loop\">
+        <input type=\"submit\" name=\"refresh\" value=\"Refresh\">   
+
+    </form><hr>
+    "
+echo "<pre>"
+    while read line
+    do
+        echo \$line
+    done < /tmp/ping_loop
+    echo "</pre>
+    </div>
+   </body></html>"
+END
+
+sleep 1
+chmod 755 /etc/init.d/ping_loop
+chmod 755 /www/cgi-bin/pingloop
+echo "install ping_loop v3 selesai"
+echo "semoga berguna by mikodemos"
+date > /tmp/ping_loop
+echo "ping_loop installed.." >> /tmp/ping_loop
+  exit 0
+;;
+esac
+HOST=$(uci get ping_loop.setting.host)
+INTERVAL=$(uci get ping_loop.setting.interval)
+COUNT=$(uci get ping_loop.setting.count)
+TIMEOUT=$(uci get ping_loop.setting.timeout)
+BYTECOUNT=$(uci get ping_loop.setting.bytecount)
+IP_RX1=$(uci get ping_loop.setting.ip_rx1)
+IP_RX2=$(uci get ping_loop.setting.ip_rx2)
+
+ while [ 1 ]
+ do
+   sleep $INTERVAL
+   route -e |grep 0.0.0.0 > /dev/null
+   if [ "$?" == "0" ];then   
+       cok=0
+       ping $IP_RX1 -c 2 -w 2 |grep 100% > /dev/null 
+       if [ "$?" == "1" ];then
+            let cok=$cok+1 
+       fi 
+       ping $IP_RX2 -c 2 -w 2 |grep 100% > /dev/null 
+       if [ "$?" == "1" ];then
+            let cok=$cok+1 
+       fi 
+       date >  /tmp/ping_loop    
+       if [ $cok -gt 0 ];then 
+           ping $HOST -c $COUNT -w $TIMEOUT -s $BYTECOUNT  >> /tmp/ping_loop
+       else
+           echo "ping_loop disable, tidak ada RX aktif.." >> /tmp/ping_loop
+       fi
+   else
+       date >  /tmp/ping_loop    
+       echo "ping_loop disable, router offline.." >> /tmp/ping_loop
+   fi
+done
+
+#end
+
+
+
